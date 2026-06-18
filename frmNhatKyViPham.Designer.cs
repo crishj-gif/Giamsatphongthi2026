@@ -1,4 +1,4 @@
-﻿namespace GiamSatPhongThi
+namespace GiamSatPhongThi
 {
     partial class frmNhatKyViPham
     {
@@ -50,6 +50,7 @@
             this.txtGhiChu        = new System.Windows.Forms.TextBox();
             this.chkXacNhan       = new System.Windows.Forms.CheckBox();
             this.pnlButtons       = new System.Windows.Forms.GroupBox();
+            this.grpGrid = new System.Windows.Forms.GroupBox();
             this.btnThem          = new System.Windows.Forms.Button();
             this.btnSua           = new System.Windows.Forms.Button();
             this.btnXoa           = new System.Windows.Forms.Button();
@@ -61,6 +62,7 @@
             ((System.ComponentModel.ISupportInitialize)(this.dgvLog)).BeginInit();
             this.pnlDetail.SuspendLayout();
             this.pnlButtons.SuspendLayout();
+            this.grpGrid.SuspendLayout();
             this.SuspendLayout();
 
             // ============================================================
@@ -79,7 +81,10 @@
             this.pnlSearch.Controls.Add(this.txtTimKiem);
             this.pnlSearch.Controls.Add(this.lblSearch);
             this.pnlSearch.Dock      = System.Windows.Forms.DockStyle.Top;
-            this.pnlSearch.Height    = 70;
+            this.pnlSearch.Location = new System.Drawing.Point(12, 12);
+            this.pnlSearch.Size = new System.Drawing.Size(1176, 75);
+            this.pnlSearch.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.pnlSearch.Text = "Tìm kiếm & Bộ lọc";
             this.pnlSearch.Name      = "pnlSearch";
             this.pnlSearch.Padding   = new System.Windows.Forms.Padding(15, 0, 15, 0);
 
@@ -148,25 +153,28 @@
             this.pnlDateFilter.Controls.Add(this.cmbNam);
             this.pnlDateFilter.Controls.Add(this.btnLocNgay);
             this.pnlDateFilter.Dock      = System.Windows.Forms.DockStyle.Top;
-            this.pnlDateFilter.Height    = 48;
+            this.pnlDateFilter.Location = new System.Drawing.Point(12, 93);
+            this.pnlDateFilter.Size = new System.Drawing.Size(1176, 65);
+            this.pnlDateFilter.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.pnlDateFilter.Text = "Lọc theo ngày";
             this.pnlDateFilter.Name      = "pnlDateFilter";
             this.pnlDateFilter.Padding   = new System.Windows.Forms.Padding(15, 0, 15, 0);
 
             this.chkLocNgay.AutoSize  = true;
             this.chkLocNgay.Font      = new System.Drawing.Font("Segoe UI", 9f, System.Drawing.FontStyle.Bold);
-            this.chkLocNgay.Location  = new System.Drawing.Point(20, 14);
+            this.chkLocNgay.Location  = new System.Drawing.Point(20, 25);
             this.chkLocNgay.Name      = "chkLocNgay";
             this.chkLocNgay.Text      = "📅 Lọc theo ngày";
             this.chkLocNgay.CheckedChanged += new System.EventHandler(this.ChkLocNgay_CheckedChanged);
 
             this.lblTuNgay.AutoSize  = true;
             this.lblTuNgay.Font      = new System.Drawing.Font("Segoe UI", 9f);
-            this.lblTuNgay.Location  = new System.Drawing.Point(175, 15);
+            this.lblTuNgay.Location  = new System.Drawing.Point(175, 26);
             this.lblTuNgay.Name      = "lblTuNgay";
             this.lblTuNgay.Text      = "Từ ngày:";
 
             this.dtpTuNgay.Format    = System.Windows.Forms.DateTimePickerFormat.Short;
-            this.dtpTuNgay.Location  = new System.Drawing.Point(245, 11);
+            this.dtpTuNgay.Location  = new System.Drawing.Point(245, 22);
             this.dtpTuNgay.Name      = "dtpTuNgay";
             this.dtpTuNgay.Size      = new System.Drawing.Size(120, 26);
             this.dtpTuNgay.Enabled   = false;
@@ -174,12 +182,12 @@
 
             this.lblDenNgay.AutoSize  = true;
             this.lblDenNgay.Font      = new System.Drawing.Font("Segoe UI", 9f);
-            this.lblDenNgay.Location  = new System.Drawing.Point(378, 15);
+            this.lblDenNgay.Location  = new System.Drawing.Point(378, 26);
             this.lblDenNgay.Name      = "lblDenNgay";
             this.lblDenNgay.Text      = "Đến ngày:";
 
             this.dtpDenNgay.Format   = System.Windows.Forms.DateTimePickerFormat.Short;
-            this.dtpDenNgay.Location = new System.Drawing.Point(453, 11);
+            this.dtpDenNgay.Location = new System.Drawing.Point(453, 22);
             this.dtpDenNgay.Name     = "dtpDenNgay";
             this.dtpDenNgay.Size     = new System.Drawing.Size(120, 26);
             this.dtpDenNgay.Enabled  = false;
@@ -187,19 +195,19 @@
 
             this.lblNamHoc.AutoSize  = true;
             this.lblNamHoc.Font      = new System.Drawing.Font("Segoe UI", 9f);
-            this.lblNamHoc.Location  = new System.Drawing.Point(590, 15);
+            this.lblNamHoc.Location  = new System.Drawing.Point(590, 26);
             this.lblNamHoc.Name      = "lblNamHoc";
             this.lblNamHoc.Text      = "Năm:";
 
             this.cmbNam.DropDownStyle      = System.Windows.Forms.ComboBoxStyle.DropDownList;
             this.cmbNam.Font               = new System.Drawing.Font("Segoe UI", 9.5f);
-            this.cmbNam.Location           = new System.Drawing.Point(628, 11);
+            this.cmbNam.Location           = new System.Drawing.Point(628, 22);
             this.cmbNam.Name               = "cmbNam";
             this.cmbNam.Size               = new System.Drawing.Size(100, 26);
             this.cmbNam.Enabled            = false;
             this.cmbNam.SelectedIndexChanged += new System.EventHandler(this.CmbNam_SelectedIndexChanged);
 
-            this.btnLocNgay.Location = new System.Drawing.Point(742, 10);
+            this.btnLocNgay.Location = new System.Drawing.Point(742, 21);
             this.btnLocNgay.Name     = "btnLocNgay";
             this.btnLocNgay.Size     = new System.Drawing.Size(110, 28);
             this.btnLocNgay.Text     = "🔎 Áp dụng lọc";
@@ -295,7 +303,10 @@
             this.pnlDetail.Controls.Add(this.lblGhiChu);
             this.pnlDetail.Controls.Add(this.lblInfoSV);
             this.pnlDetail.Dock      = System.Windows.Forms.DockStyle.Bottom;
-            this.pnlDetail.Height    = 120;
+            this.pnlDetail.Location = new System.Drawing.Point(12, 510);
+            this.pnlDetail.Size = new System.Drawing.Size(1176, 120);
+            this.pnlDetail.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.pnlDetail.Text = "Thông tin chi tiết";
             this.pnlDetail.Name      = "pnlDetail";
             this.pnlDetail.Padding   = new System.Windows.Forms.Padding(15, 8, 15, 8);
 
@@ -333,39 +344,42 @@
             this.pnlButtons.Controls.Add(this.btnXuatExcel);
             this.pnlButtons.Controls.Add(this.btnXemDrive);
             this.pnlButtons.Dock      = System.Windows.Forms.DockStyle.Bottom;
-            this.pnlButtons.Height    = 55;
+            this.pnlButtons.Location = new System.Drawing.Point(12, 636);
+            this.pnlButtons.Size = new System.Drawing.Size(1176, 75);
+            this.pnlButtons.Anchor = ((System.Windows.Forms.AnchorStyles)(((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
+            this.pnlButtons.Text = "Thao tác";
             this.pnlButtons.Name      = "pnlButtons";
             this.pnlButtons.Padding   = new System.Windows.Forms.Padding(15, 8, 15, 8);
 
-            this.btnThem.Location = new System.Drawing.Point(20, 10);
+            this.btnThem.Location = new System.Drawing.Point(20, 25);
             this.btnThem.Name     = "btnThem";
             this.btnThem.Size     = new System.Drawing.Size(150, 36);
             this.btnThem.TabIndex = 10;
             this.btnThem.Text     = "➕  Thêm thủ công";
             this.btnThem.Click   += new System.EventHandler(this.BtnThem_Click);
 
-            this.btnSua.Location = new System.Drawing.Point(185, 10);
+            this.btnSua.Location = new System.Drawing.Point(185, 25);
             this.btnSua.Name     = "btnSua";
             this.btnSua.Size     = new System.Drawing.Size(160, 36);
             this.btnSua.TabIndex = 11;
             this.btnSua.Text     = "💾  Lưu chỉnh sửa";
             this.btnSua.Click   += new System.EventHandler(this.BtnSua_Click);
 
-            this.btnXoa.Location = new System.Drawing.Point(360, 10);
+            this.btnXoa.Location = new System.Drawing.Point(360, 25);
             this.btnXoa.Name     = "btnXoa";
             this.btnXoa.Size     = new System.Drawing.Size(150, 36);
             this.btnXoa.TabIndex = 12;
             this.btnXoa.Text     = "🗑️  Xóa vi phạm";
             this.btnXoa.Click   += new System.EventHandler(this.BtnXoa_Click);
 
-            this.btnXuatExcel.Location = new System.Drawing.Point(530, 10);
+            this.btnXuatExcel.Location = new System.Drawing.Point(530, 25);
             this.btnXuatExcel.Name     = "btnXuatExcel";
             this.btnXuatExcel.Size     = new System.Drawing.Size(180, 36);
             this.btnXuatExcel.TabIndex = 13;
             this.btnXuatExcel.Text     = "📊  Xuất Excel (.xlsx)";
             this.btnXuatExcel.Click   += new System.EventHandler(this.BtnXuatExcel_Click);
 
-            this.btnXemDrive.Location = new System.Drawing.Point(725, 10);
+            this.btnXemDrive.Location = new System.Drawing.Point(725, 25);
             this.btnXemDrive.Name     = "btnXemDrive";
             this.btnXemDrive.Size     = new System.Drawing.Size(200, 36);
             this.btnXemDrive.TabIndex = 14;
@@ -378,8 +392,7 @@
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode       = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize          = new System.Drawing.Size(1200, 800);
-            this.Controls.Add(this.dgvLog);
-            this.Controls.Add(this.pnlPage);
+            this.Controls.Add(this.grpGrid);
             this.Controls.Add(this.pnlDetail);
             this.Controls.Add(this.pnlButtons);
             this.Controls.Add(this.pnlDateFilter);
@@ -401,6 +414,19 @@
             this.pnlDetail.ResumeLayout(false);
             this.pnlDetail.PerformLayout();
             this.pnlButtons.ResumeLayout(false);
+            this.grpGrid.ResumeLayout(false);
+            // 
+            // grpGrid
+            // 
+            this.grpGrid.Controls.Add(this.dgvLog);
+            this.grpGrid.Controls.Add(this.pnlPage);
+            this.grpGrid.Location = new System.Drawing.Point(12, 164);
+            this.grpGrid.Name = "grpGrid";
+            this.grpGrid.Size = new System.Drawing.Size(1176, 340);
+            this.grpGrid.TabIndex = 99;
+            this.grpGrid.TabStop = false;
+            this.grpGrid.Text = "Danh sách nhật ký vi phạm";
+            this.grpGrid.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
             this.ResumeLayout(false);
         }
 
@@ -442,6 +468,7 @@
         private System.Windows.Forms.TextBox       txtGhiChu;
         private System.Windows.Forms.CheckBox      chkXacNhan;
         private System.Windows.Forms.GroupBox         pnlButtons;
+        private System.Windows.Forms.GroupBox grpGrid;
         private System.Windows.Forms.Button        btnThem;
         private System.Windows.Forms.Button        btnSua;
         private System.Windows.Forms.Button        btnXoa;

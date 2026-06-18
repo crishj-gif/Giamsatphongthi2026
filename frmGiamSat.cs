@@ -37,6 +37,10 @@ namespace GiamSatPhongThi
         private string lastRecognizedName = "Chưa xác định";
         private DateTime lastRecognizedTime = DateTime.MinValue;
         private DateTime lastNoFaceWarning = DateTime.MinValue;
+        
+        // --- CÁC CỜ ĐIỀU KHIỂN CHỨC NĂNG ---
+        private bool isDiemDanhActive = false;
+        private bool isGiamSatActive = false;
 
         // Khai báo các biến toàn cục để chứa "bộ não" nhận diện mặt và điện thoại
         private CascadeClassifier phoneDetector;
@@ -91,8 +95,9 @@ namespace GiamSatPhongThi
             UIHelper.BoTronControl(btnQuanLyViPham, 15);
             UIHelper.BoTronControl(picCamera, 20);
             
-            // Gắn sự kiện click cho nút điểm danh
+            // Gắn sự kiện click cho nút điểm danh và giám sát
             btnDiemDanh.Click += btnDiemDanh_Click;
+            btnGiamSatAI.Click += btnGiamSatAI_Click;
             
             // BẤM ĐÚP ĐỂ THÊM ẢNH DATABASE
             dgvDanhSach.CellDoubleClick += DgvDanhSach_CellDoubleClick;
@@ -177,9 +182,14 @@ namespace GiamSatPhongThi
                             using (SqlConnection conn = new SqlConnection(connectionString))
                             {
                                 conn.Open();
-                                string query = "INSERT INTO ViolationLogs (TypeID, ViolationTime, IsConfirmed, ProctorNote) VALUES (@typeId, @time, 0, @note)";
+                                string query = @"
+                                    DECLARE @candID INT = NULL;
+                                    SELECT TOP 1 @candID = CandidateID FROM Candidates WHERE FullName = @doiTuong;
+                                    INSERT INTO ViolationLogs (CandidateID, TypeID, ViolationTime, IsConfirmed, ProctorNote) 
+                                    VALUES (@candID, @typeId, @time, 0, @note)";
                                 using (SqlCommand cmd = new SqlCommand(query, conn))
                                 {
+                                    cmd.Parameters.AddWithValue("@doiTuong", doiTuong);
                                     cmd.Parameters.AddWithValue("@typeId", typeId);
                                     cmd.Parameters.AddWithValue("@time",   DateTime.Now);
                                     cmd.Parameters.AddWithValue("@note",   "AI tự động phát hiện (" + doiTuong + "): " + hanhVi);
@@ -264,11 +274,18 @@ namespace GiamSatPhongThi
             else
             {
                 StopCamera();
-                if (picCamera.Image != null)
+                
+                // Dùng BeginInvoke để đảm bảo lệnh xóa ảnh chạy sau cùng (sau các frame còn kẹt trong hàng đợi UI)
+                picCamera.BeginInvoke(new Action(() =>
                 {
-                    picCamera.Image.Dispose();
-                    picCamera.Image = null; // Trả lại khung đen
-                }
+                    if (picCamera.Image != null)
+                    {
+                        picCamera.Image.Dispose();
+                        picCamera.Image = null;
+                    }
+                    picCamera.BackColor = Color.Black;
+                    picCamera.Invalidate();
+                }));
                 
                 // Trả về UI mặc định
                 btnMoCamera.Text = "Bật Camera";
@@ -372,7 +389,7 @@ namespace GiamSatPhongThi
 
                     using (Image<Bgr, Byte> currentFrame = bitmap.ToImage<Bgr, Byte>())
                     {
-                        if (isDnnLoaded && faceDetector != null)
+                        if (isDnnLoaded && faceDetector != null && (isDiemDanhActive || isGiamSatActive))
                         {
                             // 1. Chuyển ảnh màu sang ảnh xám (để dùng cho phone detector nếu cần)
                             Mat grayFrame = new Mat();
@@ -438,7 +455,7 @@ namespace GiamSatPhongThi
                                     // Tiến hành Face Recognition bằng SFace (Chỉ nhận diện khi mặt thẳng)
                                     string matchedName = "Nguoi la";
                                     
-                                    if (isRecognizerTrained && faceRecognizer != null && faceFeatures.Count > 0)
+                                    if (isDiemDanhActive && isRecognizerTrained && faceRecognizer != null && faceFeatures.Count > 0)
                                     {
                                         try
                                         {
@@ -480,48 +497,56 @@ namespace GiamSatPhongThi
                                 else
                                 {
                                     listMatNghieng.Add(rect);
-                                    CvInvoke.Rectangle(currentFrame, rect, new MCvScalar(0, 0, 255), 2);
-                                    CvInvoke.PutText(currentFrame, "CANH BAO: Quay ngang ngua!", new Point(rect.X, rect.Y - 10), 
-                                        Emgu.CV.CvEnum.FontFace.HersheySimplex, 0.7, new MCvScalar(0, 0, 255), 2);
-                                    
-                                    string violatorName = "Chưa xác định";
-                                    if ((DateTime.Now - lastRecognizedTime).TotalSeconds < 10)
+                                    if (isGiamSatActive)
                                     {
-                                        violatorName = lastRecognizedName;
-                                    }
+                                        CvInvoke.Rectangle(currentFrame, rect, new MCvScalar(0, 0, 255), 2);
+                                        CvInvoke.PutText(currentFrame, "CANH BAO: Quay ngang ngua!", new Point(rect.X, rect.Y - 10), 
+                                            Emgu.CV.CvEnum.FontFace.HersheySimplex, 0.7, new MCvScalar(0, 0, 255), 2);
+                                        
+                                        string violatorName = "Chưa xác định";
+                                        if ((DateTime.Now - lastRecognizedTime).TotalSeconds < 10)
+                                        {
+                                            violatorName = lastRecognizedName;
+                                        }
 
-                                    if (!trackers.ContainsKey(violatorName)) trackers[violatorName] = new ViolationTracker();
-                                    ViolationTracker trk = trackers[violatorName];
+                                        if (!trackers.ContainsKey(violatorName)) trackers[violatorName] = new ViolationTracker();
+                                        ViolationTracker trk = trackers[violatorName];
 
-                                    if (!trk.IsViolating)
-                                    {
-                                        trk.IsViolating = true;
-                                        trk.ViolationStartTime = DateTime.Now;
+                                        if (!trk.IsViolating)
+                                        {
+                                            trk.IsViolating = true;
+                                            trk.ViolationStartTime = DateTime.Now;
+                                        }
+                                        trk.LastSeenViolation = DateTime.Now;
+                                        
+                                        double t = (DateTime.Now - trk.ViolationStartTime).TotalSeconds;
+                                        double W = 5.0; // Quay ngang ngửa
+                                        double lambda = 0.5;
+                                        double alpha = 10.0;
+                                        
+                                        double S = W * Math.Exp(lambda * t) + alpha * trk.Frequency;
+                                        trk.CurrentScore = Math.Min(100.0, S);
+                                        
+                                        if (trk.CurrentScore >= 20.0) // Ngưỡng kích hoạt lưu DB
+                                        {
+                                            LogViPham(violatorName, "Quay ngang ngửa");
+                                            trk.Frequency += 1;
+                                            trk.IsViolating = false; // Reset to avoid spamming
+                                            trk.CurrentScore = 0;
+                                            TriggerAutoRecord(currentFrame.Size);
+                                        }
                                     }
-                                    trk.LastSeenViolation = DateTime.Now;
-                                    
-                                    double t = (DateTime.Now - trk.ViolationStartTime).TotalSeconds;
-                                    double W = 5.0; // Quay ngang ngửa
-                                    double lambda = 0.5;
-                                    double alpha = 10.0;
-                                    
-                                    double S = W * Math.Exp(lambda * t) + alpha * trk.Frequency;
-                                    trk.CurrentScore = Math.Min(100.0, S);
-                                    
-                                    if (trk.CurrentScore >= 20.0) // Ngưỡng kích hoạt lưu DB
+                                    else
                                     {
-                                        LogViPham(violatorName, "Quay ngang ngửa");
-                                        trk.Frequency += 1;
-                                        trk.IsViolating = false; // Reset to avoid spamming
-                                        trk.CurrentScore = 0;
-                                        TriggerAutoRecord(currentFrame.Size);
+                                        // Vẫn vẽ khung nhận diện nhưng không ghi log vi phạm
+                                        CvInvoke.Rectangle(currentFrame, rect, new MCvScalar(255, 255, 0), 2);
                                     }
                                 }
                             }
 
                             // Phát hiện điện thoại (dùng Haar cascade truyền thống trên ảnh xám thu nhỏ)
                             Rectangle[] dienThoai = new Rectangle[0];
-                            if (phoneDetector != null)
+                            if (isGiamSatActive && phoneDetector != null)
                             {
                                 Mat smallGrayFrame = new Mat();
                                 double scale = 2.0;
@@ -586,7 +611,7 @@ namespace GiamSatPhongThi
                             }
 
                             // TRẠNG THÁI 3: KHÔNG TÌM THẤY MẶT (BỎ VỊ TRÍ)
-                            if (listMatThang.Count == 0 && listMatNghieng.Count == 0 && dienThoai.Length == 0)
+                            if (isGiamSatActive && listMatThang.Count == 0 && listMatNghieng.Count == 0 && dienThoai.Length == 0)
                             {
                                 CvInvoke.PutText(currentFrame, "CANH BAO: Khuat tam nhin / Quay ra sau / Bo vi tri!", new Point(10, 30), 
                                     Emgu.CV.CvEnum.FontFace.HersheySimplex, 0.8, new MCvScalar(0, 165, 255), 2);
@@ -688,7 +713,30 @@ namespace GiamSatPhongThi
         // Giữ lại các nút cũ
         private void btnDiemDanh_Click(object sender, EventArgs e)
         {
-            MessageBox.Show("Để hệ thống điểm danh tự động, hãy đảm bảo bạn đã 'Thêm ảnh' (Bấm đúp vào học sinh) và nhấn OK để hệ thống tự động quét AI.", "Thông tin", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            isDiemDanhActive = !isDiemDanhActive;
+            if (isDiemDanhActive)
+            {
+                btnDiemDanh.BackColor = Color.Orange;
+                MessageBox.Show("Đã bật chế độ ĐIỂM DANH (Nhận diện khuôn mặt).", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                btnDiemDanh.BackColor = Color.LightSkyBlue;
+            }
+        }
+
+        private void btnGiamSatAI_Click(object sender, EventArgs e)
+        {
+            isGiamSatActive = !isGiamSatActive;
+            if (isGiamSatActive)
+            {
+                btnGiamSatAI.BackColor = Color.Orange;
+                MessageBox.Show("Đã bật chế độ GIÁM SÁT AI (Phát hiện vi phạm).", "Thông báo", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                btnGiamSatAI.BackColor = Color.MediumPurple; // Restore to default-ish
+            }
         }
 
         // --- SỰ KIỆN TẢI ẢNH TỪ MÁY TÍNH VÀO SQL ---
@@ -836,8 +884,7 @@ namespace GiamSatPhongThi
                 // Gọi Silent
             }
         }
-        private void btnGiamSatAI_Click(object sender, EventArgs e) { }
-        private void btnKetThuc_Click(object sender, EventArgs e) { }
+
 
         private void btnQuanLyViPham_Click(object sender, EventArgs e)
         {

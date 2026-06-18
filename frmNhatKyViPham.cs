@@ -6,7 +6,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Windows.Forms;
 using ClosedXML.Excel;
-
+using System.Threading.Tasks;
 // =====================================================================
 //  frmNhatKyViPham – Nhật ký vi phạm  (Phân trang + Lọc thời điểm)
 // =====================================================================
@@ -52,14 +52,11 @@ namespace GiamSatPhongThi
         // ============================================================
         //  LOAD FORM
         // ============================================================
-        private void FrmNhatKyViPham_Load(object sender, EventArgs e)
+        private async void FrmNhatKyViPham_Load(object sender, EventArgs e)
         {
             ApplyModernStyling();
-            LoadViolationTypes();
-            LoadYears();            // Đổ danh sách năm (từ DB) vào cmbNam
-            LoadData();
-
-            // Thêm nút Xem Xếp Hạng Hành Vi
+            
+            // Add Xem Xếp Hạng button first so UI shows it immediately
             Button btnXepHang = new Button();
             btnXepHang.Text = "🏆 Top Cảnh Báo";
             btnXepHang.Size = new Size(140, 35);
@@ -67,6 +64,13 @@ namespace GiamSatPhongThi
             StyleButton(btnXepHang, Color.Crimson);
             btnXepHang.Click += BtnXemXepHang_Click;
             btnXemDrive.Parent.Controls.Add(btnXepHang);
+
+            // Let UI paint all controls (buttons, grids, groupboxes) before doing DB work
+            await Task.Delay(50);
+
+            await LoadViolationTypesAsync();
+            await LoadYearsAsync();
+            await LoadDataAsync();
         }
 
         private void BtnXemXepHang_Click(object sender, EventArgs e)
@@ -127,6 +131,47 @@ namespace GiamSatPhongThi
             this.SetStyle(ControlStyles.ResizeRedraw, true);
             this.DoubleBuffered = true;
 
+            // ---- Set uniform font (ko in nghiêng, cùng 1 loại) ----
+            Font uniformFont = new Font("Segoe UI", 10F, FontStyle.Regular);
+            SetUniformFont(this, uniformFont);
+
+            // ---- Tách rời các panel (rời rạc hơn, bớt liền khối) ----
+            // We remove Dock and use Anchor with explicit Locations to create margins
+            pnlSearch.Dock = DockStyle.None;
+            pnlSearch.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            pnlSearch.Location = new Point(12, 12);
+            pnlSearch.Size = new Size(1176, 75);
+
+            pnlDateFilter.Dock = DockStyle.None;
+            pnlDateFilter.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            pnlDateFilter.Location = new Point(12, 100); // Cách pnlSearch 13px
+            pnlDateFilter.Size = new Size(1176, 65);
+
+            grpGrid.Dock = DockStyle.None;
+            grpGrid.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            grpGrid.Location = new Point(12, 180); // Cách pnlDateFilter 15px
+            grpGrid.Size = new Size(1176, 400);
+
+            pnlDetail.Dock = DockStyle.None;
+            pnlDetail.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            pnlDetail.Location = new Point(12, 595); // Cách grpGrid 15px
+            pnlDetail.Size = new Size(1176, 100);
+
+            pnlButtons.Dock = DockStyle.None;
+            pnlButtons.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            pnlButtons.Location = new Point(12, 710); // Cách pnlDetail 15px
+            pnlButtons.Size = new Size(1176, 75);
+
+            // ---- Button Colors (màu khác nhau vào màu cơ bản) ----
+            StyleButton(btnTimKiem, Color.DodgerBlue);
+            StyleButton(btnLamMoi, Color.Gray);
+            StyleButton(btnLocNgay, Color.Teal);
+            StyleButton(btnThem, Color.MediumSeaGreen);
+            StyleButton(btnSua, Color.Orange);
+            StyleButton(btnXoa, Color.Crimson);
+            StyleButton(btnXuatExcel, Color.Indigo);
+            StyleButton(btnXemDrive, Color.DeepPink);
+
             // ---- DataGridView ----
             dgvLog.RowHeadersVisible   = false;
             dgvLog.AllowUserToAddRows  = false;
@@ -135,10 +180,23 @@ namespace GiamSatPhongThi
             dgvLog.RowTemplate.Height  = 32;
         }
 
+        private void SetUniformFont(Control parent, Font font)
+        {
+            parent.Font = font;
+            foreach (Control c in parent.Controls)
+            {
+                SetUniformFont(c, font);
+            }
+        }
+
         private void StyleButton(Button btn, Color bg)
         {
-            // Reset to default settings
-            btn.UseVisualStyleBackColor = true;
+            btn.UseVisualStyleBackColor = false;
+            btn.BackColor = bg;
+            btn.ForeColor = Color.White;
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.FlatAppearance.BorderSize = 0;
+            btn.Cursor = Cursors.Hand;
         }
 
         // ============================================================
@@ -162,24 +220,27 @@ namespace GiamSatPhongThi
         // ============================================================
         //  LOAD DANH SÁCH NĂM TỪ DB
         // ============================================================
-        private void LoadYears()
+        private async Task LoadYearsAsync()
         {
             try
             {
-                using (SqlConnection conn = new SqlConnection(CONN_STR))
+                DataTable dt = new DataTable();
+                await Task.Run(() => 
                 {
-                    conn.Open();
-                    string sql = "SELECT DISTINCT YEAR(ViolationTime) AS Nam FROM ViolationLogs ORDER BY Nam DESC";
-                    SqlDataAdapter da = new SqlDataAdapter(sql, conn);
-                    DataTable dt = new DataTable();
-                    da.Fill(dt);
+                    using (SqlConnection conn = new SqlConnection(CONN_STR))
+                    {
+                        conn.Open();
+                        string sql = "SELECT DISTINCT YEAR(ViolationTime) AS Nam FROM ViolationLogs ORDER BY Nam DESC";
+                        SqlDataAdapter da = new SqlDataAdapter(sql, conn);
+                        da.Fill(dt);
+                    }
+                });
 
-                    cmbNam.Items.Clear();
-                    cmbNam.Items.Add("-- Tất cả --");
-                    foreach (DataRow dr in dt.Rows)
-                        cmbNam.Items.Add(dr["Nam"].ToString());
-                    cmbNam.SelectedIndex = 0;
-                }
+                cmbNam.Items.Clear();
+                cmbNam.Items.Add("-- Tất cả --");
+                foreach (DataRow dr in dt.Rows)
+                    cmbNam.Items.Add(dr["Nam"].ToString());
+                cmbNam.SelectedIndex = 0;
             }
             catch { cmbNam.Items.Add("-- Tất cả --"); cmbNam.SelectedIndex = 0; }
         }
@@ -187,7 +248,7 @@ namespace GiamSatPhongThi
         // ============================================================
         //  2. TẢI DỮ LIỆU – Server-side paging + lọc ngày
         // ============================================================
-        private void LoadData()
+        private async Task LoadDataAsync()
         {
             try
             {
@@ -227,22 +288,53 @@ namespace GiamSatPhongThi
                     ORDER BY vl.ViolationTime DESC
                     OFFSET {offset} ROWS FETCH NEXT {_pageSize} ROWS ONLY";
 
-                using (SqlConnection conn = new SqlConnection(CONN_STR))
+                int totalRecords = 0;
+                DataTable dt = new DataTable();
+
+                await Task.Run(() => 
                 {
-                    conn.Open();
+                    try
+                    {
+                        using (SqlConnection conn = new SqlConnection(CONN_STR))
+                        {
+                            conn.Open();
+                            // Tự động fix dữ liệu cũ: Điền CandidateID dựa trên tên trong ProctorNote do AI sinh ra
+                            string fixSql = @"
+                                UPDATE ViolationLogs 
+                                SET CandidateID = (
+                                    SELECT TOP 1 CandidateID 
+                                    FROM Candidates 
+                                    WHERE FullName = SUBSTRING(ProctorNote, 23, CHARINDEX(')', ProctorNote) - 23)
+                                )
+                                WHERE CandidateID IS NULL 
+                                  AND ProctorNote LIKE N'AI tự động phát hiện (%)%';
+                            ";
+                            using (SqlCommand cmdFix = new SqlCommand(fixSql, conn))
+                            {
+                                cmdFix.ExecuteNonQuery();
+                            }
+                        }
+                    } catch { }
 
-                    // -- Đếm tổng --
-                    SqlCommand cmdCount = new SqlCommand(sqlCount, conn);
-                    BindParams(cmdCount);
-                    _totalRecords = (int)cmdCount.ExecuteScalar();
+                    using (SqlConnection conn = new SqlConnection(CONN_STR))
+                    {
+                        conn.Open();
 
-                    // -- Lấy trang hiện tại --
-                    SqlCommand cmdData = new SqlCommand(sqlData, conn);
-                    BindParams(cmdData);
-                    SqlDataAdapter da = new SqlDataAdapter(cmdData);
-                    dtMain = new DataTable();
-                    da.Fill(dtMain);
-                }
+                        // -- Đếm tổng --
+                        SqlCommand cmdCount = new SqlCommand(sqlCount, conn);
+                        BindParams(cmdCount);
+                        totalRecords = (int)cmdCount.ExecuteScalar();
+
+                        // -- Lấy trang hiện tại --
+                        SqlCommand cmdData = new SqlCommand(sqlData, conn);
+                        BindParams(cmdData);
+                        SqlDataAdapter da = new SqlDataAdapter(cmdData);
+                        da.Fill(dt);
+                    }
+                });
+
+                _totalRecords = totalRecords;
+                dtMain = dt;
 
                 dgvLog.DataSource = dtMain;
                 if (dgvLog.Columns.Contains("Mã Log"))    dgvLog.Columns["Mã Log"].Visible = false;
@@ -298,29 +390,32 @@ namespace GiamSatPhongThi
         // ============================================================
         //  3. TẢI LOẠI VI PHẠM VÀO COMBOBOX
         // ============================================================
-        private void LoadViolationTypes()
+        private async Task LoadViolationTypesAsync()
         {
             try
             {
-                using (SqlConnection conn = new SqlConnection(CONN_STR))
+                DataTable dtVT = new DataTable();
+                await Task.Run(() => 
                 {
-                    conn.Open();
-                    string sql = "SELECT TypeID, TypeName FROM ViolationTypes ORDER BY TypeName";
-                    SqlDataAdapter da  = new SqlDataAdapter(sql, conn);
-                    DataTable      dtVT = new DataTable();
-                    da.Fill(dtVT);
+                    using (SqlConnection conn = new SqlConnection(CONN_STR))
+                    {
+                        conn.Open();
+                        string sql = "SELECT TypeID, TypeName FROM ViolationTypes ORDER BY TypeName";
+                        SqlDataAdapter da  = new SqlDataAdapter(sql, conn);
+                        da.Fill(dtVT);
+                    }
+                });
 
-                    // Thêm dòng "-- Tất cả --" đầu tiên
-                    DataRow drAll = dtVT.NewRow();
-                    drAll["TypeID"]   = -1;
-                    drAll["TypeName"] = "-- Tất cả loại vi phạm --";
-                    dtVT.Rows.InsertAt(drAll, 0);
+                // Thêm dòng "-- Tất cả --" đầu tiên
+                DataRow drAll = dtVT.NewRow();
+                drAll["TypeID"]   = -1;
+                drAll["TypeName"] = "-- Tất cả loại vi phạm --";
+                dtVT.Rows.InsertAt(drAll, 0);
 
-                    cmbLoaiViPham.DataSource    = dtVT;
-                    cmbLoaiViPham.DisplayMember = "TypeName";
-                    cmbLoaiViPham.ValueMember   = "TypeID";
-                    cmbLoaiViPham.SelectedIndex = 0;
-                }
+                cmbLoaiViPham.DataSource    = dtVT;
+                cmbLoaiViPham.DisplayMember = "TypeName";
+                cmbLoaiViPham.ValueMember   = "TypeID";
+                cmbLoaiViPham.SelectedIndex = 0;
             }
             catch
             {
@@ -359,12 +454,12 @@ namespace GiamSatPhongThi
         // ============================================================
         //  5. TÌM KIẾM
         // ============================================================
-        private void BtnTimKiem_Click(object sender, EventArgs e)
+        private async void BtnTimKiem_Click(object sender, EventArgs e)
         {
             _keyword     = txtTimKiem.Text.Trim();
             _vtID        = GetSelectedViolationTypeID();
             _currentPage = 1;
-            LoadData();
+            await LoadDataAsync();
         }
 
         private void TxtTimKiem_KeyDown(object sender, KeyEventArgs e)
@@ -375,24 +470,24 @@ namespace GiamSatPhongThi
         // ============================================================
         //  6. LỌC THEO LOẠI VI PHẠM
         // ============================================================
-        private void CmbLoaiViPham_SelectedIndexChanged(object sender, EventArgs e)
+        private async void CmbLoaiViPham_SelectedIndexChanged(object sender, EventArgs e)
         {
             _vtID        = GetSelectedViolationTypeID();
             _currentPage = 1;
-            LoadData();
+            await LoadDataAsync();
         }
 
         // ============================================================
         //  6b. LỌC THEO NGÀY / NĂM
         // ============================================================
-        private void ChkLocNgay_CheckedChanged(object sender, EventArgs e)
+        private async void ChkLocNgay_CheckedChanged(object sender, EventArgs e)
         {
             bool on = chkLocNgay.Checked;
             dtpTuNgay.Enabled  = on;
             dtpDenNgay.Enabled = on;
             cmbNam.Enabled     = on;
             btnLocNgay.Enabled = on;
-            if (!on) { _useDate = false; _currentPage = 1; LoadData(); }
+            if (!on) { _useDate = false; _currentPage = 1; await LoadDataAsync(); }
         }
 
         private void CmbNam_SelectedIndexChanged(object sender, EventArgs e)
@@ -406,7 +501,7 @@ namespace GiamSatPhongThi
             }
         }
 
-        private void BtnLocNgay_Click(object sender, EventArgs e)
+        private async void BtnLocNgay_Click(object sender, EventArgs e)
         {
             if (dtpTuNgay.Value.Date > dtpDenNgay.Value.Date)
             {
@@ -418,27 +513,27 @@ namespace GiamSatPhongThi
             _fromDate   = dtpTuNgay.Value.Date;
             _toDate     = dtpDenNgay.Value.Date;
             _currentPage = 1;
-            LoadData();
+            await LoadDataAsync();
         }
 
         // ============================================================
         //  7. PHÂN TRANG
         // ============================================================
-        private void BtnFirst_Click(object sender, EventArgs e) { _currentPage = 1;          LoadData(); }
-        private void BtnPrev_Click (object sender, EventArgs e) { if (_currentPage > 1)          { _currentPage--; LoadData(); } }
-        private void BtnNext_Click (object sender, EventArgs e) { if (_currentPage < TotalPages) { _currentPage++; LoadData(); } }
-        private void BtnLast_Click (object sender, EventArgs e) { _currentPage = TotalPages; LoadData(); }
+        private async void BtnFirst_Click(object sender, EventArgs e) { _currentPage = 1;          await LoadDataAsync(); }
+        private async void BtnPrev_Click (object sender, EventArgs e) { if (_currentPage > 1)          { _currentPage--; await LoadDataAsync(); } }
+        private async void BtnNext_Click (object sender, EventArgs e) { if (_currentPage < TotalPages) { _currentPage++; await LoadDataAsync(); } }
+        private async void BtnLast_Click (object sender, EventArgs e) { _currentPage = TotalPages; await LoadDataAsync(); }
 
-        private void CmbPageSize_SelectedIndexChanged(object sender, EventArgs e)
+        private async void CmbPageSize_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (int.TryParse(cmbPageSize.SelectedItem?.ToString(), out int ps))
-            { _pageSize = ps; _currentPage = 1; LoadData(); }
+            { _pageSize = ps; _currentPage = 1; await LoadDataAsync(); }
         }
 
         // ============================================================
         //  8. LÀM MỚI (Reset tất cả bộ lọc)
         // ============================================================
-        private void BtnLamMoi_Click(object sender, EventArgs e)
+        private async void BtnLamMoi_Click(object sender, EventArgs e)
         {
             txtTimKiem.Text             = "";
             cmbLoaiViPham.SelectedIndex = 0;
@@ -448,20 +543,20 @@ namespace GiamSatPhongThi
             chkXacNhan.Checked          = false;
             lblInfoSV.Text              = "Chọn một dòng vi phạm để xem chi tiết và chỉnh sửa.";
             _keyword = ""; _vtID = -1; _useDate = false; _currentPage = 1;
-            LoadData();
+            await LoadDataAsync();
         }
 
         // ============================================================
         //  8. THÊM THỦ CÔNG
         // ============================================================
-        private void BtnThem_Click(object sender, EventArgs e)
+        private async void BtnThem_Click(object sender, EventArgs e)
         {
             // Mở dialog Thêm mới
             using (frmThemViPham dlg = new frmThemViPham())
             {
                 if (dlg.ShowDialog() == DialogResult.OK)
                 {
-                    LoadData();   // Tải lại sau khi thêm
+                    await LoadDataAsync();   // Tải lại sau khi thêm
                     MessageBox.Show("✅ Đã thêm nhật ký vi phạm thành công!", "Thành công",
                                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
@@ -471,7 +566,7 @@ namespace GiamSatPhongThi
         // ============================================================
         //  9. SỬA (Cập nhật ProctorNote + IsConfirmed)
         // ============================================================
-        private void BtnSua_Click(object sender, EventArgs e)
+        private async void BtnSua_Click(object sender, EventArgs e)
         {
             // --- VALIDATION: Phải chọn dòng trước ---
             if (selectedLogID < 0)
@@ -502,7 +597,7 @@ namespace GiamSatPhongThi
                 }
 
                 // Tải lại lưới sau khi sửa
-                LoadData();
+                await LoadDataAsync();
 
                 MessageBox.Show("✅ Đã cập nhật ghi chú và trạng thái xác nhận thành công!",
                                 "Cập nhật thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -516,7 +611,7 @@ namespace GiamSatPhongThi
         // ============================================================
         //  10. XÓA
         // ============================================================
-        private void BtnXoa_Click(object sender, EventArgs e)
+        private async void BtnXoa_Click(object sender, EventArgs e)
         {
             // --- VALIDATION: Phải chọn dòng trước ---
             if (selectedLogID < 0)
@@ -554,7 +649,7 @@ namespace GiamSatPhongThi
                 chkXacNhan.Checked = false;
                 lblInfoSV.Text     = "Chọn một dòng vi phạm để xem chi tiết và chỉnh sửa.";
 
-                LoadData();
+                await LoadDataAsync();
 
                 MessageBox.Show("✅ Đã xóa nhật ký vi phạm thành công!",
                                 "Xóa thành công", MessageBoxButtons.OK, MessageBoxIcon.Information);
