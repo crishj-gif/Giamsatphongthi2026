@@ -13,6 +13,11 @@ using System.Threading.Tasks;
 
 namespace GiamSatPhongThi
 {
+    /// <summary>
+    /// Form frmNhatKyViPham: Quản lý danh sách các vi phạm trong phòng thi.
+    /// Cung cấp các chức năng: Xem, Tìm kiếm, Lọc theo thời gian/loại lỗi, Thêm thủ công, Sửa ghi chú, Xóa, Xuất Excel.
+    /// Có hỗ trợ Phân trang (Pagination) để tối ưu hiệu suất khi dữ liệu lớn.
+    /// </summary>
     public partial class frmNhatKyViPham : Form
     {
         // ============================================================
@@ -246,8 +251,13 @@ namespace GiamSatPhongThi
         }
 
         // ============================================================
-        //  2. TẢI DỮ LIỆU – Server-side paging + lọc ngày
+        //  2. TẢI DỮ LIỆU TỪ DB LÊN GRID (Server-side paging + lọc)
         // ============================================================
+        /// <summary>
+        /// Hàm cốt lõi để tải dữ liệu vi phạm từ SQL Server lên DataGridView.
+        /// Hàm này tự động xây dựng câu lệnh WHERE dựa trên các bộ lọc (từ khóa, loại lỗi, ngày tháng)
+        /// và sử dụng kỹ thuật OFFSET-FETCH để chỉ lấy đủ số dòng cho trang hiện tại.
+        /// </summary>
         private async Task LoadDataAsync()
         {
             try
@@ -517,11 +527,15 @@ namespace GiamSatPhongThi
         }
 
         // ============================================================
-        //  7. PHÂN TRANG
+        //  7. PHÂN TRANG (PAGINATION CONTROLS)
         // ============================================================
+        /// <summary>Về trang đầu tiên</summary>
         private async void BtnFirst_Click(object sender, EventArgs e) { _currentPage = 1;          await LoadDataAsync(); }
+        /// <summary>Lùi lại 1 trang</summary>
         private async void BtnPrev_Click (object sender, EventArgs e) { if (_currentPage > 1)          { _currentPage--; await LoadDataAsync(); } }
+        /// <summary>Tiến lên 1 trang</summary>
         private async void BtnNext_Click (object sender, EventArgs e) { if (_currentPage < TotalPages) { _currentPage++; await LoadDataAsync(); } }
+        /// <summary>Đến trang cuối cùng</summary>
         private async void BtnLast_Click (object sender, EventArgs e) { _currentPage = TotalPages; await LoadDataAsync(); }
 
         private async void CmbPageSize_SelectedIndexChanged(object sender, EventArgs e)
@@ -661,8 +675,12 @@ namespace GiamSatPhongThi
         }
 
         // ============================================================
-        //  11. XUẤT EXCEL (.xlsx) – dùng ClosedXML
+        //  11. XUẤT EXCEL (.xlsx) – dùng thư viện ClosedXML
         // ============================================================
+        /// <summary>
+        /// Xuất dữ liệu đang hiển thị trên DataGridView ra file Excel.
+        /// Xây dựng cấu trúc file, tiêu đề, tô màu xen kẽ các hàng để báo cáo chuyên nghiệp.
+        /// </summary>
         private void BtnXuatExcel_Click(object sender, EventArgs e)
         {
             if (dtMain == null || dtMain.Rows.Count == 0)
@@ -775,8 +793,12 @@ namespace GiamSatPhongThi
             }
         }
         // ============================================================
-        //  XEM VIDEO TRÊN GOOGLE DRIVE
+        //  12. XEM VIDEO TRÊN GOOGLE DRIVE HOẶC MÁY TÍNH
         // ============================================================
+        /// <summary>
+        /// Mở đường link video chứng cứ vi phạm.
+        /// Hệ thống sẽ kiểm tra xem video đã lưu trên Google Drive (http...) hay vẫn ở máy tính cục bộ.
+        /// </summary>
         private void BtnXemDrive_Click(object sender, EventArgs e)
         {
             if (dgvLog.CurrentRow == null)

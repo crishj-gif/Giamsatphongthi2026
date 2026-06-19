@@ -13,15 +13,24 @@ using System.Data.SqlClient;
 
 namespace GiamSatPhongThi
 {
+    /// <summary>
+    /// Lớp ViolationTracker: Theo dõi trạng thái vi phạm của từng thí sinh trong thời gian thực.
+    /// Hoạt động như một bộ đếm điểm (score) dựa trên thời gian vi phạm để quyết định xem
+    /// hành vi đó là vô tình hay cố ý trước khi lưu vào CSDL.
+    /// </summary>
     public class ViolationTracker
     {
-        public DateTime ViolationStartTime { get; set; } = DateTime.MinValue;
-        public DateTime LastSeenViolation { get; set; } = DateTime.MinValue;
-        public bool IsViolating { get; set; } = false;
-        public int Frequency { get; set; } = 0;
-        public double CurrentScore { get; set; } = 0;
+        public DateTime ViolationStartTime { get; set; } = DateTime.MinValue; // Thời điểm bắt đầu vi phạm
+        public DateTime LastSeenViolation { get; set; } = DateTime.MinValue;  // Lần cuối cùng AI thấy vi phạm
+        public bool IsViolating { get; set; } = false;                        // Đang trong trạng thái vi phạm hay không
+        public int Frequency { get; set; } = 0;                               // Số lần đã vi phạm trước đó
+        public double CurrentScore { get; set; } = 0;                         // Điểm khả nghi hiện tại
     }
 
+    /// <summary>
+    /// Form frmGiamSat: Màn hình chính của hệ thống. Chứa toàn bộ logic AI xử lý hình ảnh từ Camera.
+    /// Tích hợp AForge.NET để lấy hình ảnh Camera và Emgu.CV (OpenCV) để chạy mô hình AI nhận diện khuôn mặt (DNN YuNet/SFace) và điện thoại (Haar Cascade).
+    /// </summary>
     public partial class frmGiamSat : Form
     {
         private Dictionary<string, ViolationTracker> trackers = new Dictionary<string, ViolationTracker>();
@@ -34,9 +43,16 @@ namespace GiamSatPhongThi
         private int autoRecordingFrames = 0;
         private DateTime lastPhoneWarning = DateTime.MinValue;
         private DateTime lastProfileWarning = DateTime.MinValue;
-        private string lastRecognizedName = "Chưa xác định";
-        private DateTime lastRecognizedTime = DateTime.MinValue;
         private DateTime lastNoFaceWarning = DateTime.MinValue;
+        
+        // --- LƯU TRỮ VỊ TRÍ KHUÔN MẶT ĐỂ GẮN LỖI ĐÚNG NGƯỜI ---
+        private class RecognizedFace
+        {
+            public string Name { get; set; }
+            public Rectangle Rect { get; set; }
+            public DateTime LastSeenTime { get; set; }
+        }
+        private Dictionary<string, RecognizedFace> recentFaces = new Dictionary<string, RecognizedFace>();
         
         // --- CÁC CỜ ĐIỀU KHIỂN CHỨC NĂNG ---
         private bool isDiemDanhActive = false;
@@ -51,11 +67,15 @@ namespace GiamSatPhongThi
         private bool isDnnLoaded = false;
         
         // --- CÁC BIẾN CHO TÍNH NĂNG ĐIỂM DANH GẮN MÁC ---
-        private Dictionary<int, string> faceNames = new Dictionary<int, string>();
-        private Dictionary<int, Mat> faceFeatures = new Dictionary<int, Mat>();
+        private Dictionary<int, string> faceNames = new Dictionary<int, string>(); // Chứa ID -> Tên thí sinh
+        private Dictionary<int, Mat> faceFeatures = new Dictionary<int, Mat>();    // Chứa ID -> Đặc trưng khuôn mặt (1 mảng số thực) để so sánh (Cosince similarity)
         private bool isRecognizerTrained = false;
 
-        // Hàm bỏ dấu Tiếng Việt cho OpenCV hiển thị chữ (Khắc phục lỗi Hu???nh Gia H??n)
+        /// <summary>
+        /// Hàm loại bỏ dấu Tiếng Việt.
+        /// Lý do: Thư viện vẽ chữ của OpenCV (CvInvoke.PutText) không hỗ trợ Unicode tiếng Việt có dấu.
+        /// Việc bỏ dấu giúp hiển thị tên thí sinh không bị lỗi font (ví dụ: bị biến thành dấu ??).
+        /// </summary>
         private string RemoveAccents(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return text;
@@ -70,6 +90,35 @@ namespace GiamSatPhongThi
                 }
             }
             return stringBuilder.ToString().Normalize(System.Text.NormalizationForm.FormC).Replace("Đ", "D").Replace("đ", "d");
+        }
+
+        /// <summary>
+        /// Tìm tên người vi phạm bằng cách đối chiếu tọa độ (Rectangle) của hành vi (Mặt nghiêng/Điện thoại)
+        /// với tọa độ của các khuôn mặt đã nhận diện được trong 5 giây gần đây.
+        /// </summary>
+        private string GetClosestRecognizedName(Rectangle targetRect)
+        {
+            string bestName = "Chưa xác định";
+            double minDistance = double.MaxValue;
+            Point targetCenter = new Point(targetRect.X + targetRect.Width / 2, targetRect.Y + targetRect.Height / 2);
+
+            foreach (var kvp in recentFaces)
+            {
+                var face = kvp.Value;
+                if ((DateTime.Now - face.LastSeenTime).TotalSeconds < 5)
+                {
+                    Point faceCenter = new Point(face.Rect.X + face.Rect.Width / 2, face.Rect.Y + face.Rect.Height / 2);
+                    double dist = Math.Sqrt(Math.Pow(targetCenter.X - faceCenter.X, 2) + Math.Pow(targetCenter.Y - faceCenter.Y, 2));
+                    
+                    // Ngưỡng 250 pixel để linh động do đối tượng có thể xê dịch một chút
+                    if (dist < minDistance && dist < 250)
+                    {
+                        minDistance = dist;
+                        bestName = face.Name;
+                    }
+                }
+            }
+            return bestName;
         }
 
         public frmGiamSat()
@@ -162,7 +211,11 @@ namespace GiamSatPhongThi
             LoadDanhSachThiSinh();
         }
 
-        // Cập nhật lên UI và đồng bộ vào DATABASE nhật ký an toàn
+        /// <summary>
+        /// Cập nhật lên UI (bảng DataGridView góc phải) và đồng bộ (Insert) vào DATABASE bảng ViolationLogs.
+        /// Do hàm này có thể được gọi từ một luồng nền (background thread do Camera sinh ra),
+        /// việc cập nhật UI phải sử dụng Invoke/BeginInvoke để tránh lỗi "Cross-thread operation".
+        /// </summary>
         private void LogViPham(string doiTuong, string hanhVi)
         {
             if (this.InvokeRequired)
@@ -379,6 +432,10 @@ namespace GiamSatPhongThi
             catch { }
         }
 
+        /// <summary>
+        /// SỰ KIỆN QUAN TRỌNG NHẤT: Chạy liên tục với mỗi khung hình (frame) lấy từ Webcam (thường 15-30 lần/giây).
+        /// Chứa toàn bộ logic AI để nhận diện, so sánh và đánh giá hành vi.
+        /// </summary>
         private void VideoSource_NewFrame(object sender, NewFrameEventArgs eventArgs)
         {
             try
@@ -422,16 +479,16 @@ namespace GiamSatPhongThi
                                 h = Math.Min(currentFrame.Height - y, h);
                                 Rectangle rect = new Rectangle(x, y, w, h);
                                 
-                                // Landmarks
-                                float x_re = faceData[4]; // Right eye
-                                float x_le = faceData[6]; // Left eye
-                                float x_nt = faceData[8]; // Nose tip
-                                float confidence = faceData[14];
+                                // Landmarks (Tọa độ các điểm neo trên khuôn mặt)
+                                float x_re = faceData[4]; // Right eye - Mắt phải
+                                float x_le = faceData[6]; // Left eye - Mắt trái
+                                float x_nt = faceData[8]; // Nose tip - Đỉnh mũi
+                                float confidence = faceData[14]; // Độ tự tin của AI (từ 0.0 đến 1.0)
                                 
-                                if (confidence < 0.75f) continue; // Bỏ qua mảng tóc, gáy (độ tự tin thấp)
+                                if (confidence < 0.75f) continue; // Bỏ qua mảng tóc, gáy (độ tự tin thấp < 75%)
                                 
                                 // Thuật toán kiểm tra mặt thẳng hay nghiêng dựa trên mốc khuôn mặt
-                                // Tính khoảng cách ngang từ mũi đến 2 mắt
+                                // Tính khoảng cách ngang trên trục X từ điểm chóp mũi (Nose tip) đến 2 mắt
                                 float dist1 = Math.Abs(x_nt - x_re);
                                 float dist2 = Math.Abs(x_nt - x_le);
                                 float maxDist = Math.Max(dist1, dist2);
@@ -459,9 +516,11 @@ namespace GiamSatPhongThi
                                     {
                                         try
                                         {
+                                            // AlignCrop: Xoay, cắt và căn chỉnh khuôn mặt cho chuẩn để rút trích đặc trưng
                                             Mat alignedFace = new Mat();
                                             faceRecognizer.AlignCrop(currentFrame.Mat, faces.Row(i), alignedFace);
                                             
+                                            // Feature: Biến ảnh khuôn mặt thành một ma trận đặc trưng (1 mảng số)
                                             Mat feature = new Mat();
                                             faceRecognizer.Feature(alignedFace, feature);
                                             
@@ -479,11 +538,17 @@ namespace GiamSatPhongThi
                                                 }
                                             }
                                             
+                                            // Cosine similarity: Ngưỡng chuẩn mực của thư viện (threshold >= 0.363 là coi như cùng 1 người)
                                             if (bestScore >= 0.363 && bestMatchId != -1)
                                             {
-                                                matchedName = faceNames[bestMatchId] + " (" + Math.Round(bestScore, 2) + ")";
-                                                lastRecognizedName = faceNames[bestMatchId];
-                                                lastRecognizedTime = DateTime.Now;
+                                                string cleanName = faceNames[bestMatchId];
+                                                matchedName = cleanName + " (" + Math.Round(bestScore, 2) + ")";
+                                                
+                                                if (!recentFaces.ContainsKey(cleanName))
+                                                    recentFaces[cleanName] = new RecognizedFace { Name = cleanName };
+                                                    
+                                                recentFaces[cleanName].Rect = rect;
+                                                recentFaces[cleanName].LastSeenTime = DateTime.Now;
                                             }
                                         }
                                         catch { }
@@ -503,11 +568,7 @@ namespace GiamSatPhongThi
                                         CvInvoke.PutText(currentFrame, "CANH BAO: Quay ngang ngua!", new Point(rect.X, rect.Y - 10), 
                                             Emgu.CV.CvEnum.FontFace.HersheySimplex, 0.7, new MCvScalar(0, 0, 255), 2);
                                         
-                                        string violatorName = "Chưa xác định";
-                                        if ((DateTime.Now - lastRecognizedTime).TotalSeconds < 10)
-                                        {
-                                            violatorName = lastRecognizedName;
-                                        }
+                                        string violatorName = GetClosestRecognizedName(rect);
 
                                         if (!trackers.ContainsKey(violatorName)) trackers[violatorName] = new ViolationTracker();
                                         ViolationTracker trk = trackers[violatorName];
@@ -519,15 +580,18 @@ namespace GiamSatPhongThi
                                         }
                                         trk.LastSeenViolation = DateTime.Now;
                                         
+                                        // Công thức tính điểm vi phạm (Score) 
+                                        // W: Trọng số hành vi (Quay ngang = 5, Điện thoại = 30)
+                                        // Exponential Growth: Điểm tăng dần theo cấp số mũ dựa vào thời gian duy trì vi phạm
                                         double t = (DateTime.Now - trk.ViolationStartTime).TotalSeconds;
                                         double W = 5.0; // Quay ngang ngửa
-                                        double lambda = 0.5;
-                                        double alpha = 10.0;
+                                        double lambda = 0.5; // Hệ số gia tốc thời gian
+                                        double alpha = 10.0; // Điểm phạt cộng dồn nếu vi phạm nhiều lần
                                         
                                         double S = W * Math.Exp(lambda * t) + alpha * trk.Frequency;
-                                        trk.CurrentScore = Math.Min(100.0, S);
+                                        trk.CurrentScore = Math.Min(100.0, S); // Tối đa 100 điểm
                                         
-                                        if (trk.CurrentScore >= 20.0) // Ngưỡng kích hoạt lưu DB
+                                        if (trk.CurrentScore >= 20.0) // Ngưỡng kích hoạt 20 điểm thì lưu DB
                                         {
                                             LogViPham(violatorName, "Quay ngang ngửa");
                                             trk.Frequency += 1;
@@ -544,18 +608,22 @@ namespace GiamSatPhongThi
                                 }
                             }
 
-                            // Phát hiện điện thoại (dùng Haar cascade truyền thống trên ảnh xám thu nhỏ)
+                            // TRẠNG THÁI 2: PHÁT HIỆN ĐIỆN THOẠI BẰNG HAAR CASCADE
+                            // Haar Cascade hoạt động tốt nhất trên ảnh xám (grayFrame), và việc thu nhỏ ảnh (scale = 2.0) giúp AI chạy nhanh hơn.
                             Rectangle[] dienThoai = new Rectangle[0];
                             if (isGiamSatActive && phoneDetector != null)
                             {
                                 Mat smallGrayFrame = new Mat();
                                 double scale = 2.0;
                                 CvInvoke.Resize(grayFrame, smallGrayFrame, new Size((int)(grayFrame.Width / scale), (int)(grayFrame.Height / scale)));
+                                
+                                // DetectMultiScale: Tìm điện thoại. 1.2 là scale factor, 5 là minNeighbors (để giảm nhiễu)
                                 Rectangle[] dtTemp = phoneDetector.DetectMultiScale(smallGrayFrame, 1.2, 5, Size.Empty);
                                 
                                 dienThoai = new Rectangle[dtTemp.Length];
                                 for (int i = 0; i < dtTemp.Length; i++)
                                 {
+                                    // Phóng to tọa độ nhân lên gấp đôi để vẽ lại trên ảnh gốc
                                     dienThoai[i] = new Rectangle(
                                         (int)(dtTemp[i].X * scale),
                                         (int)(dtTemp[i].Y * scale),
@@ -574,39 +642,35 @@ namespace GiamSatPhongThi
                                     CvInvoke.Rectangle(currentFrame, rect, new MCvScalar(255, 0, 0), 2);
                                     CvInvoke.PutText(currentFrame, "CANH BAO: Phat hien Dien thoai!", new Point(rect.X, rect.Y - 10), 
                                         Emgu.CV.CvEnum.FontFace.HersheySimplex, 0.7, new MCvScalar(255, 0, 0), 2);
-                                }
-                                
-                                string violatorName = "Chưa xác định";
-                                if ((DateTime.Now - lastRecognizedTime).TotalSeconds < 10)
-                                {
-                                    violatorName = lastRecognizedName;
-                                }
 
-                                if (!trackers.ContainsKey(violatorName)) trackers[violatorName] = new ViolationTracker();
-                                ViolationTracker trk = trackers[violatorName];
+                                    string violatorName = GetClosestRecognizedName(rect);
 
-                                if (!trk.IsViolating)
-                                {
-                                    trk.IsViolating = true;
-                                    trk.ViolationStartTime = DateTime.Now;
-                                }
-                                trk.LastSeenViolation = DateTime.Now;
-                                
-                                double t = (DateTime.Now - trk.ViolationStartTime).TotalSeconds;
-                                double W = 30.0; // Điện thoại nặng hơn
-                                double lambda = 0.5;
-                                double alpha = 10.0;
-                                
-                                double S = W * Math.Exp(lambda * t) + alpha * trk.Frequency;
-                                trk.CurrentScore = Math.Min(100.0, S);
-                                
-                                if (trk.CurrentScore >= 20.0)
-                                {
-                                    LogViPham(violatorName, "Sử dụng điện thoại");
-                                    trk.Frequency += 1;
-                                    trk.IsViolating = false; 
-                                    trk.CurrentScore = 0;
-                                    TriggerAutoRecord(currentFrame.Size);
+                                    if (!trackers.ContainsKey(violatorName)) trackers[violatorName] = new ViolationTracker();
+                                    ViolationTracker trk = trackers[violatorName];
+
+                                    if (!trk.IsViolating)
+                                    {
+                                        trk.IsViolating = true;
+                                        trk.ViolationStartTime = DateTime.Now;
+                                    }
+                                    trk.LastSeenViolation = DateTime.Now;
+                                    
+                                    double t = (DateTime.Now - trk.ViolationStartTime).TotalSeconds;
+                                    double W = 30.0; // Điện thoại nặng hơn
+                                    double lambda = 0.5;
+                                    double alpha = 10.0;
+                                    
+                                    double S = W * Math.Exp(lambda * t) + alpha * trk.Frequency;
+                                    trk.CurrentScore = Math.Min(100.0, S);
+                                    
+                                    if (trk.CurrentScore >= 20.0)
+                                    {
+                                        LogViPham(violatorName, "Sử dụng điện thoại");
+                                        trk.Frequency += 1;
+                                        trk.IsViolating = false; 
+                                        trk.CurrentScore = 0;
+                                        TriggerAutoRecord(currentFrame.Size);
+                                    }
                                 }
                             }
 
@@ -817,7 +881,12 @@ namespace GiamSatPhongThi
             }
         }
 
-        // --- HUẤN LUYỆN KHUÔN MẶT DB ---
+        // --- HUẤN LUYỆN KHUÔN MẶT DB (TẠO CƠ SỞ DỮ LIỆU ĐẶC TRƯNG MẶT) ---
+        /// <summary>
+        /// Hàm này đọc toàn bộ hình ảnh có trong cơ sở dữ liệu, đẩy qua mô hình YuNet để tìm khuôn mặt,
+        /// rồi đẩy qua SFace để lấy "ma trận đặc trưng" lưu vào Dictionary.
+        /// Từ đó AI có thể so sánh đặc trưng này với đặc trưng của người trước Camera để biết là ai.
+        /// </summary>
         private void TrainFaceRecognizer()
         {
             try
